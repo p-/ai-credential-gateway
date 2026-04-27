@@ -99,10 +99,6 @@ curl http://127.0.0.1:4180/anthropic/messages \
 
 ```
 docker build -t ai-credential-gateway .
-docker run -p 4180:4180 \
-  -v $PWD/config.yaml:/config.yaml \
-  -e GATEWAY_SECRET=... \
-  -e OPENAI_CREDENTIAL=... \
-  -e ANTHROPIC_CREDENTIAL=... \
-  ai-credential-gateway
 ```
+
+Use the Docker image in a way the AI agent that should be isolated has no access to the ENV variables passed to the ai-credential-gateway.
