@@ -95,4 +95,14 @@ curl http://127.0.0.1:4180/anthropic/messages \
   -d '{"model":"claude-sonnet-4-6","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'
 ```
 
+## Build and run with Docker
 
+```
+docker build -t ai-credential-gateway .
+docker run -p 4180:4180 \
+  -v $PWD/config.yaml:/config.yaml \
+  -e GATEWAY_SECRET=... \
+  -e OPENAI_CREDENTIAL=... \
+  -e ANTHROPIC_CREDENTIAL=... \
+  ai-credential-gateway
+```
