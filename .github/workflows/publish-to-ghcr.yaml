@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ai-credential-gateway
+  IMAGE_NAME: p/ai-credential-gateway
 
 jobs:
   build-and-push-image:
