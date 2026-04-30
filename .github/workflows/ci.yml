@@ -17,7 +17,7 @@ jobs:
       uses: actions/checkout@v6
 
     - name: Build
-      run: go build
+      run: CGO_ENABLED=0 go build -o /acg ./cmd/gateway
 
     - name: Test
       run: go test ./...
