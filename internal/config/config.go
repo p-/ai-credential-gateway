@@ -42,6 +42,9 @@ func Load(path string) (*Config, error) {
 		if p.Path == "" {
 			return nil, fmt.Errorf("proxy entry %d (%s): path is required", i, p.Key)
 		}
+		if strings.Contains(p.Path, "/") && p.Path != "/" {
+			return nil, fmt.Errorf("proxy entry %d (%s): path must not contain slashes (use \"/\" for root)", i, p.Key)
+		}
 		if p.Endpoint == "" {
 			return nil, fmt.Errorf("proxy entry %d (%s): endpoint is required", i, p.Key)
 		}

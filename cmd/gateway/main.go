@@ -43,9 +43,14 @@ func main() {
 			h = auth.NewGatewayAuth(entry.HeaderReplace, gatewayCredential)(handler)
 		}
 
-		pattern := "/" + entry.Path + "/"
+		var pattern string
+		if entry.Path == "/" {
+			pattern = "/"
+		} else {
+			pattern = "/" + entry.Path + "/"
+		}
 		mux.Handle(pattern, h)
-		log.Printf("registered proxy: /%s/ -> %s", entry.Path, entry.Endpoint)
+		log.Printf("registered proxy: %s -> %s", pattern, entry.Endpoint)
 	}
 
 	log.Printf("listening on %s", cfg.ListenAddr)

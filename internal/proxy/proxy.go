@@ -27,8 +27,13 @@ func New(entry config.ProxyEntry, credential string) (http.Handler, error) {
 			req.Host = target.Host
 
 			// Strip the proxy path prefix and join with the target path.
-			prefix := "/" + entry.Path
-			reqPath := strings.TrimPrefix(req.URL.Path, prefix)
+			var reqPath string
+			if entry.Path == "/" {
+				reqPath = req.URL.Path
+			} else {
+				prefix := "/" + entry.Path
+				reqPath = strings.TrimPrefix(req.URL.Path, prefix)
+			}
 			req.URL.Path = singleJoiningSlash(target.Path, reqPath)
 			req.URL.RawPath = ""
 
