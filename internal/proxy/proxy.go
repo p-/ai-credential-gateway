@@ -21,6 +21,9 @@ func New(entry config.ProxyEntry, credential string) (http.Handler, error) {
 	headerName, headerValue := parseHeaderReplace(entry.HeaderReplace, credential)
 
 	rp := &httputil.ReverseProxy{
+		// Flush immediately so streamed responses (e.g. SSE) are
+		// forwarded to the client without buffering.
+		FlushInterval: -1,
 		Director: func(req *http.Request) {
 			req.URL.Scheme = target.Scheme
 			req.URL.Host = target.Host

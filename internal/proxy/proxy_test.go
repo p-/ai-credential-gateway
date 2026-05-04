@@ -1,11 +1,14 @@
 package proxy
 
 import (
+	"bufio"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/p-/ai-credential-gateway/internal/config"
 )
@@ -301,6 +304,75 @@ func TestNew_RootPath_PreservesFullPath(t *testing.T) {
 
 	if gotPath != "/v2/chat/completions" {
 		t.Errorf("backend path = %q, want %q", gotPath, "/v2/chat/completions")
+	}
+}
+
+func TestNew_SSE_StreamedWithoutBuffering(t *testing.T) {
+	// Backend sends SSE events with deliberate pauses.
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		for i := 0; i < 3; i++ {
+			fmt.Fprintf(w, "data: event-%d\n\n", i)
+			flusher.Flush()
+			time.Sleep(10 * time.Millisecond)
+		}
+	}))
+	defer backend.Close()
+
+	entry := config.ProxyEntry{
+		Key:           "sse",
+		Path:          "sse",
+		HeaderReplace: "Authorization: Bearer {credential}",
+		Endpoint:      backend.URL,
+	}
+
+	handler, err := New(entry, "tok")
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	// Use a real HTTP server so we get a true streaming connection.
+	proxy := httptest.NewServer(handler)
+	defer proxy.Close()
+
+	resp, err := http.Get(proxy.URL + "/sse/events")
+	if err != nil {
+		t.Fatalf("GET error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("Content-Type = %q, want %q", ct, "text/event-stream")
+	}
+
+	// Read individual SSE data lines as they arrive.
+	scanner := bufio.NewScanner(resp.Body)
+	var events []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			events = append(events, line)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scanner error: %v", err)
+	}
+
+	if len(events) != 3 {
+		t.Fatalf("got %d events, want 3", len(events))
+	}
+	for i, e := range events {
+		want := fmt.Sprintf("data: event-%d", i)
+		if e != want {
+			t.Errorf("event[%d] = %q, want %q", i, e, want)
+		}
 	}
 }
 
