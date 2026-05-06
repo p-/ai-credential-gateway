@@ -74,3 +74,53 @@ proxies:
 		t.Errorf("path = %q, want %q", cfg.Proxies[0].Path, "openai")
 	}
 }
+
+func TestIsRequireAuth_DefaultTrue(t *testing.T) {
+	cfg, err := Load(writeConfig(t, `
+proxies:
+  - key: openai
+    path: openai
+    credential_header: "Authorization: Bearer {credential}"
+    endpoint: "https://api.openai.com/v1"
+`))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.IsRequireAuth() {
+		t.Error("IsRequireAuth() = false, want true (default)")
+	}
+}
+
+func TestIsRequireAuth_ExplicitTrue(t *testing.T) {
+	cfg, err := Load(writeConfig(t, `
+require_auth: true
+proxies:
+  - key: openai
+    path: openai
+    credential_header: "Authorization: Bearer {credential}"
+    endpoint: "https://api.openai.com/v1"
+`))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.IsRequireAuth() {
+		t.Error("IsRequireAuth() = false, want true")
+	}
+}
+
+func TestIsRequireAuth_ExplicitFalse(t *testing.T) {
+	cfg, err := Load(writeConfig(t, `
+require_auth: false
+proxies:
+  - key: openai
+    path: openai
+    credential_header: "Authorization: Bearer {credential}"
+    endpoint: "https://api.openai.com/v1"
+`))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.IsRequireAuth() {
+		t.Error("IsRequireAuth() = true, want false")
+	}
+}
