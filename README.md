@@ -14,7 +14,7 @@ Credentials are currently read from environment variables in the form `<KEY>_CRE
 
 ## Gateway Authentication
 
-By default, `require_auth` is `true` and the gateway will refuse to start unless the `GATEWAY_SECRET` environment variable is set. When authentication is enabled, the gateway extracts the credential from each incoming request using the same header format defined by `credential_header` for that proxy entry. For example, OpenAI-bound requests must send `Authorization: Bearer <gateway-token>` and Anthropic-bound requests must send `x-api-key: <gateway-token>`. The client's auth header is stripped before forwarding; the real upstream credential is injected by the gateway.
+If `require_auth` is `true` the gateway will refuse to start unless the `GATEWAY_SECRET` environment variable is set. When authentication is enabled, the gateway extracts the credential from each incoming request using the same header format defined by `credential_header` for that proxy entry. For example, OpenAI-bound requests must send `Authorization: Bearer <gateway-token>` and Anthropic-bound requests must send `x-api-key: <gateway-token>`. The client's auth header is stripped before forwarding; the real upstream credential is injected by the gateway.
 
 If `require_auth` is set to `false`, authentication is optional — but if `GATEWAY_SECRET` is still provided, client authentication will be enforced.
 
