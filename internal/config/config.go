@@ -16,8 +16,18 @@ type ProxyEntry struct {
 }
 
 type Config struct {
-	ListenAddr string       `yaml:"listen_addr"`
-	Proxies    []ProxyEntry `yaml:"proxies"`
+	ListenAddr  string       `yaml:"listen_addr"`
+	RequireAuth *bool        `yaml:"require_auth"`
+	Proxies     []ProxyEntry `yaml:"proxies"`
+}
+
+// IsRequireAuth returns whether authentication is required.
+// Defaults to true if not explicitly set in the config.
+func (c *Config) IsRequireAuth() bool {
+	if c.RequireAuth == nil {
+		return true
+	}
+	return *c.RequireAuth
 }
 
 func Load(path string) (*Config, error) {

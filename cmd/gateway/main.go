@@ -23,6 +23,9 @@ func main() {
 	mux := http.NewServeMux()
 
 	gatewayCredential := os.Getenv("GATEWAY_SECRET")
+	if cfg.IsRequireAuth() && gatewayCredential == "" {
+		log.Fatalf("require_auth is enabled but GATEWAY_SECRET environment variable is not set")
+	}
 	if gatewayCredential != "" {
 		log.Println("GATEWAY_SECRET is set — client authentication enabled")
 	}
@@ -39,7 +42,7 @@ func main() {
 		}
 
 		var h http.Handler = handler
-		if gatewayCredential != "" {
+		if cfg.IsRequireAuth() || gatewayCredential != "" {
 			h = auth.NewGatewayAuth(entry.HeaderReplace, gatewayCredential)(handler)
 		}
 
