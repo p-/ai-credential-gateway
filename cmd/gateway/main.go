@@ -22,6 +22,11 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
 	gatewayCredential := os.Getenv("GATEWAY_SECRET")
 	if cfg.IsRequireAuth() && gatewayCredential == "" {
 		log.Fatalf("require_auth is enabled but GATEWAY_SECRET environment variable is not set")
