@@ -30,6 +30,11 @@ proxies:
     path: anthropic
     credential_header: "x-api-key: {credential}"
     endpoint: "https://api.anthropic.com/v1"
+
+  - key: githubcopilot
+    path: githubcopilot
+    credential_header: "Authorization: Bearer {credential}"
+    endpoint: "https://api.githubcopilot.com"
 ```
 
 | Field            | Description                                                                 |
@@ -106,4 +111,4 @@ curl http://127.0.0.1:4180/anthropic/messages \
 docker build -t ai-credential-gateway .
 ```
 
-Use the Docker image in a way the AI agent that should be isolated has no access to the ENV variables passed to the ai-credential-gateway.
+Use the Docker image in a way the AI agent that should be isolated has no access to the ENV variables passed to the ai-credential-gateway. (e.g. using Docker Compose)

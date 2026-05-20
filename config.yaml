@@ -11,3 +11,8 @@ proxies:
     path: anthropic
     credential_header: "x-api-key: {credential}"
     endpoint: "https://api.anthropic.com/v1"
+
+  - key: githubcopilot
+    path: githubcopilot
+    credential_header: "Authorization: Bearer {credential}"
+    endpoint: "https://api.githubcopilot.com"
