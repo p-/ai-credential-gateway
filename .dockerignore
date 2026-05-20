@@ -1,0 +1,4 @@
+# some default variables, but the final docker image is created from the binary only anyways.
+.git
+.devcontainer
+.env
