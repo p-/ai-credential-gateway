@@ -34,6 +34,8 @@ proxies:
 
 | Field            | Description                                                                 |
 |------------------|-----------------------------------------------------------------------------|
+| `listen_addr`    | Address and port the gateway listens on                                     |
+| `require_auth`   | Require client authentication (default: `true` if not set)                  |
 | `key`            | Unique identifier; also determines the env var name (`<KEY>_CREDENTIAL`)    |
 | `path`           | URL path prefix the gateway listens on                                      |
 | `credential_header` | Header template — `{credential}` is replaced with the actual secret         |
@@ -41,7 +43,7 @@ proxies:
 
 ## Gateway Authentication
 
-If `require_auth` is `true` the gateway will refuse to start unless the `GATEWAY_SECRET` environment variable is set. When authentication is enabled, the gateway extracts the credential from each incoming request using the same header format defined by `credential_header` for that proxy entry. For example, OpenAI-bound requests must send `Authorization: Bearer <gateway-token>` and Anthropic-bound requests must send `x-api-key: <gateway-token>`. The client's auth header is stripped before forwarding; the real upstream credential is injected by the gateway.
+If `require_auth` is `true` (default) the gateway will refuse to start unless the `GATEWAY_SECRET` environment variable is set. When authentication is enabled, the gateway extracts the credential from each incoming request using the same header format defined by `credential_header` for that proxy entry. For example, OpenAI-bound requests must send `Authorization: Bearer <gateway-token>` and Anthropic-bound requests must send `x-api-key: <gateway-token>`. The client's auth header is stripped before forwarding; the real upstream credential is injected by the gateway.
 
 If `require_auth` is set to `false`, authentication is optional — but if `GATEWAY_SECRET` is still provided, client authentication will be enforced.
 
@@ -60,7 +62,7 @@ export GATEWAY_SECRET=<secret>
 ./acg -config config.yaml
 ```
 
-Clients can then replace configured endpoints like `https://api.openai.com/v1` and `https://api.anthropic.com/v1` to `http://127.0.0.1:4180/openai` and `http://127.0.0.1:4180/anthropic`respectively. The real tokens then can be removed from this clients. (if a GATEWAY_SECRET is set, that one has to be provided instead.) 
+Clients can then replace configured endpoints like `https://api.openai.com/v1` and `https://api.anthropic.com/v1` to `http://127.0.0.1:4180/openai` and `http://127.0.0.1:4180/anthropic` respectively. The real tokens then can be removed from this clients. (if a GATEWAY_SECRET is set, that one has to be provided instead.) 
 
 
 ## Sample curl requests:
