@@ -40,6 +40,7 @@ proxies:
 | Field            | Description                                                                 |
 |------------------|-----------------------------------------------------------------------------|
 | `listen_addr`    | Address and port the gateway listens on                                     |
+| `grpc_addr`      | Address for gRPC live stream server (disabled if not set)                   |
 | `require_auth`   | Require client authentication (default: `true` if not set)                  |
 | `key`            | Unique identifier; also determines the env var name (`<KEY>_CREDENTIAL`)    |
 | `path`           | URL path prefix the gateway listens on                                      |
@@ -112,3 +113,30 @@ docker build -t ai-credential-gateway .
 ```
 
 Use the Docker image in a way the AI agent that should be isolated has no access to the ENV variables passed to the ai-credential-gateway. (e.g. using Docker Compose)
+
+## Live Request Streaming (gRPC)
+
+The gateway can expose a gRPC server that streams live request/response information to connected clients. This is useful for debugging and monitoring.
+
+To enable it, add `grpc_addr` to your `config.yaml`:
+
+```yaml
+grpc_addr: "127.0.0.1:4181"
+```
+
+If `grpc_addr` is not set, the gRPC server is not started.
+
+A built-in TUI client displays live requests with colored output:
+
+```bash
+# Stream all requests
+go run ./cmd/streamclient --addr 127.0.0.1:4181
+
+# Filter by proxy key
+go run ./cmd/streamclient --addr 127.0.0.1:4181 --proxy-key openai
+
+# Filter by path prefix
+go run ./cmd/streamclient --addr 127.0.0.1:4181 --path-prefix /v1/chat
+```
+
+See [GRPC.md](GRPC.md) for full documentation including the proto service definition and development commands.
