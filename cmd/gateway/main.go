@@ -3,12 +3,18 @@ package main
 import (
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
+
+	"google.golang.org/grpc"
 
 	"github.com/p-/ai-credential-gateway/internal/auth"
 	"github.com/p-/ai-credential-gateway/internal/config"
 	"github.com/p-/ai-credential-gateway/internal/proxy"
+	"github.com/p-/ai-credential-gateway/internal/stream"
+
+	acgv1 "github.com/p-/ai-credential-gateway/gen/acg/v1"
 )
 
 func main() {
@@ -21,6 +27,24 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+
+	hub := stream.NewHub()
+
+	// Start gRPC server for live request streaming if configured.
+	if cfg.GRPCAddr != "" {
+		grpcServer := grpc.NewServer()
+		acgv1.RegisterRequestStreamServiceServer(grpcServer, stream.NewServer(hub))
+		grpcLis, err := net.Listen("tcp", cfg.GRPCAddr)
+		if err != nil {
+			log.Fatalf("failed to listen on gRPC addr %s: %v", cfg.GRPCAddr, err)
+		}
+		go func() {
+			log.Printf("gRPC stream listening on %s", cfg.GRPCAddr)
+			if err := grpcServer.Serve(grpcLis); err != nil {
+				log.Fatalf("gRPC server error: %v", err)
+			}
+		}()
+	}
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -46,9 +70,9 @@ func main() {
 			log.Fatalf("proxy %q: failed to create handler: %v", entry.Key, err)
 		}
 
-		var h http.Handler = handler
+		var h http.Handler = stream.Middleware(hub, entry.Key)(handler)
 		if cfg.IsRequireAuth() || gatewayCredential != "" {
-			h = auth.NewGatewayAuth(entry.HeaderReplace, gatewayCredential)(handler)
+			h = auth.NewGatewayAuth(entry.HeaderReplace, gatewayCredential)(h)
 		}
 
 		var pattern string

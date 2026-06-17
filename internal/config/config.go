@@ -17,6 +17,7 @@ type ProxyEntry struct {
 
 type Config struct {
 	ListenAddr  string       `yaml:"listen_addr"`
+	GRPCAddr    string       `yaml:"grpc_addr"`
 	RequireAuth *bool        `yaml:"require_auth"`
 	Proxies     []ProxyEntry `yaml:"proxies"`
 }
