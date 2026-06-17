@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package acg.v1;
+
+option go_package = "github.com/p-/ai-credential-gateway/gen/acg/v1;acgv1";
+
+import "google/protobuf/timestamp.proto";
+
+message RequestEvent {
+  google.protobuf.Timestamp timestamp = 1;
+  string method = 2;
+  string path = 3;
+  int32 status_code = 4;
+  bytes request_body = 5;
+  bytes response_body = 6;
+  string client_ip = 7;
+  string proxy_key = 8;
+}
+
+message StreamFilter {
+  string proxy_key = 1;
+  string path_prefix = 2;
+}
+
+service RequestStreamService {
+  rpc StreamRequests(StreamFilter) returns (stream RequestEvent);
+}
