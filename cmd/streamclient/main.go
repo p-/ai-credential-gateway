@@ -173,7 +173,7 @@ func (m model) View() string {
 		filterInfo = headerStyle.Render(" [" + strings.Join(parts, ", ") + "]")
 	}
 	header := title + filterInfo + "\n" + headerStyle.Render(
-		fmt.Sprintf("%-19s  %-6s  %-10s  %-6s  %-40s  %-20s",
+		fmt.Sprintf("%-19s  %-6s  %-15s  %-6s  %-40s  %-20s",
 			"TIMESTAMP", "METHOD", "KEY", "STATUS", "PATH", "CLIENT"),
 	) + "\n"
 
@@ -186,7 +186,7 @@ func formatEvent(ev *acgv1.RequestEvent) string {
 	ts := ev.Timestamp.AsTime().Local().Format("2006-01-02 15:04:05")
 	status := formatStatus(int(ev.StatusCode))
 	method := methodStyle.Render(fmt.Sprintf("%-6s", ev.Method))
-	key := keyStyle.Render(fmt.Sprintf("%-10s", ev.ProxyKey))
+	key := keyStyle.Render(fmt.Sprintf("%-15s", ev.ProxyKey))
 	path := pathStyle.Render(fmt.Sprintf("%-40s", truncate(ev.Path, 40)))
 	ip := ipStyle.Render(fmt.Sprintf("%-20s", ev.ClientIp))
 
