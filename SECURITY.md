@@ -10,4 +10,4 @@ Use GitHub's [private vulnerability reporting](https://github.com/p-/ai-credenti
 
 ## Security Considerations.
 
-* This gateway is intended to be used locally or in controlled environments and should NEVER be exposed to uncontrolled or even public networks.
+* This gateway should NEVER be used with `require_auth` set to `false` in uncontrolled or even public networks.
