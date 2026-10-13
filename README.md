@@ -4,7 +4,7 @@
 
 A configurable reverse proxy that provides access to AI APIs without exposing credentials to clients.
 
-**NOTE**: This gateway is intended to be used locally or in controlled environments and should NEVER be exposed to uncontrolled or even public networks.
+**NOTE**: This gateway should NEVER be used with `require_auth` set to `false` in uncontrolled or even public networks.
 
 ## How it works
 
