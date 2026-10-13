@@ -18,7 +18,7 @@ Create a `config.yaml` (or pass a custom path via `-config`):
 
 ```yaml
 listen_addr: "127.0.0.1:4180"
-require_auth: false
+require_auth: true
 
 proxies:
   - key: openai
