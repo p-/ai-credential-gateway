@@ -193,6 +193,153 @@ func TestNew_TraceRejectedWithoutForwardingCredential(t *testing.T) {
 	}
 }
 
+func TestNew_RejectsEncodedTraversalVariants(t *testing.T) {
+	var reached bool
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		t.Errorf("backend reached with path %q; credential would be spent outside the base path", r.URL.Path)
+	}))
+	defer backend.Close()
+
+	entry := config.ProxyEntry{
+		Key:           "openai",
+		Path:          "openai",
+		HeaderReplace: "Authorization: Bearer {credential}",
+		Endpoint:      backend.URL + "/v1",
+	}
+
+	handler, err := New(entry, "sk-secret")
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	targets := []string{
+		"/openai/%2e%2e/admin",
+		"/openai/%2E%2E/admin",
+		"/openai/..%2Fadmin",
+		"/openai/..%2fadmin",
+		"/openai/..%5Cadmin",
+		"/openai/%2e%2e%2f%2e%2e%2fadmin",
+		"/openai/models/%2e%2e/%2e%2e/admin",
+		"/openai/../admin",
+	}
+
+	for _, target := range targets {
+		reached = false
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want %d", target, rec.Code, http.StatusBadRequest)
+		}
+		if reached {
+			t.Errorf("%s: request was forwarded upstream", target)
+		}
+	}
+}
+
+func TestNew_RootEntryRejectsTraversal(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("backend reached with path %q", r.URL.Path)
+	}))
+	defer backend.Close()
+
+	entry := config.ProxyEntry{
+		Key:           "githubcopilot",
+		Path:          "/",
+		HeaderReplace: "Authorization: Bearer {credential}",
+		Endpoint:      backend.URL,
+	}
+
+	handler, err := New(entry, "sk-secret")
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/%2e%2e/admin", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestNew_DoubleEncodedDotsAreForwardedLiterally(t *testing.T) {
+	var gotPath string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	entry := config.ProxyEntry{
+		Key:           "openai",
+		Path:          "openai",
+		HeaderReplace: "Authorization: Bearer {credential}",
+		Endpoint:      backend.URL + "/v1",
+	}
+
+	handler, err := New(entry, "sk-secret")
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/openai/%252e%252e/admin", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if want := "/v1/%2e%2e/admin"; gotPath != want {
+		t.Errorf("upstream path = %q, want %q (single decode must not yield a dot-segment)", gotPath, want)
+	}
+}
+
+func TestNew_PreservesLegitimatePaths(t *testing.T) {
+	var gotPath string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	entry := config.ProxyEntry{
+		Key:           "openai",
+		Path:          "openai",
+		HeaderReplace: "Authorization: Bearer {credential}",
+		Endpoint:      backend.URL + "/v1",
+	}
+
+	handler, err := New(entry, "sk-secret")
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	tests := []struct{ target, want string }{
+		{"/openai/chat/completions", "/v1/chat/completions"},
+		{"/openai/models/", "/v1/models/"},
+		{"/openai/./models", "/v1/models"},
+		{"/openai/a..b/models", "/v1/a..b/models"},
+	}
+
+	for _, tt := range tests {
+		gotPath = ""
+		req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s: status = %d, want %d", tt.target, rec.Code, http.StatusOK)
+		}
+		if gotPath != tt.want {
+			t.Errorf("%s: upstream path = %q, want %q", tt.target, gotPath, tt.want)
+		}
+	}
+}
+
 func TestNew_InvalidEndpoint_ReturnsError(t *testing.T) {
 	entry := config.ProxyEntry{
 		Key:           "bad",

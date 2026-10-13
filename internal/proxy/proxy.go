@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
 	"strings"
 
 	"github.com/p-/ai-credential-gateway/internal/config"
@@ -19,6 +20,7 @@ func New(entry config.ProxyEntry, credential string) (http.Handler, error) {
 	}
 
 	headerName, headerValue := parseHeaderReplace(entry.HeaderReplace, credential)
+	basePath := cleanBasePath(target.Path)
 
 	rp := &httputil.ReverseProxy{
 		// Flush immediately so streamed responses (e.g. SSE) are
@@ -30,14 +32,9 @@ func New(entry config.ProxyEntry, credential string) (http.Handler, error) {
 			req.Host = target.Host
 
 			// Strip the proxy path prefix and join with the target path.
-			var reqPath string
-			if entry.Path == "/" {
-				reqPath = req.URL.Path
-			} else {
-				prefix := "/" + entry.Path
-				reqPath = strings.TrimPrefix(req.URL.Path, prefix)
-			}
-			req.URL.Path = singleJoiningSlash(target.Path, reqPath)
+			// Already validated by the wrapping handler below.
+			upstreamPath, _ := upstreamPath(entry.Path, basePath, req.URL.Path)
+			req.URL.Path = upstreamPath
 			req.URL.RawPath = ""
 
 			// Set the credential header.
@@ -56,8 +53,77 @@ func New(entry config.ProxyEntry, credential string) (http.Handler, error) {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+
+		// Reject paths that would leave the configured upstream base path
+		// before the credential is attached to the outbound request.
+		if _, ok := upstreamPath(entry.Path, basePath, r.URL.Path); !ok {
+			log.Printf("[%s] rejected request path outside upstream base path: %q", entry.Key, r.URL.Path)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
 		rp.ServeHTTP(w, r)
 	}), nil
+}
+
+// cleanBasePath normalizes the configured endpoint path into the base path the
+// upstream request must stay within. An empty endpoint path yields "/", which
+// imposes no confinement beyond rejecting dot-segments.
+func cleanBasePath(endpointPath string) string {
+	if endpointPath == "" {
+		return "/"
+	}
+	return path.Clean("/" + strings.TrimPrefix(endpointPath, "/"))
+}
+
+// upstreamPath strips the proxy route prefix from the client path, joins the
+// remainder onto the upstream base path and returns the result, reporting
+// whether it is safe to forward.
+//
+// req.URL.Path is percent-decoded, so dot-segments the client encoded (e.g.
+// "%2e%2e", "..%2f", "..%5c") are visible here even though they were opaque to
+// the ServeMux path canonicalization that dispatched the request. Such
+// segments are rejected outright rather than resolved, and the joined path is
+// additionally required to stay within the base path.
+func upstreamPath(entryPath, basePath, clientPath string) (string, bool) {
+	reqPath := clientPath
+	if entryPath != "/" {
+		reqPath = strings.TrimPrefix(clientPath, "/"+entryPath)
+	}
+
+	if hasDotDotSegment(reqPath) {
+		return "", false
+	}
+
+	joined := singleJoiningSlash(basePath, reqPath)
+	cleaned := path.Clean(joined)
+	if strings.HasSuffix(joined, "/") && !strings.HasSuffix(cleaned, "/") {
+		cleaned += "/"
+	}
+
+	if !withinBase(cleaned, basePath) {
+		return "", false
+	}
+	return cleaned, true
+}
+
+// hasDotDotSegment reports whether the path contains a ".." segment. Backslashes
+// are treated as separators because some upstreams and intermediaries accept
+// them as such.
+func hasDotDotSegment(p string) bool {
+	for _, seg := range strings.Split(strings.ReplaceAll(p, "\\", "/"), "/") {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+// withinBase reports whether p is base itself or a descendant of it.
+func withinBase(p, base string) bool {
+	if base == "/" {
+		return strings.HasPrefix(p, "/")
+	}
+	return p == base || p == base+"/" || strings.HasPrefix(p, base+"/")
 }
 
 // parseHeaderReplace splits "HeaderName: value {credential}" into the header
