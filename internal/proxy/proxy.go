@@ -47,9 +47,8 @@ func New(entry config.ProxyEntry, credential string) (http.Handler, error) {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// TRACE/TRACK make the upstream echo the request headers, which
-		// would include the injected credential.
-		if strings.EqualFold(r.Method, http.MethodTrace) || strings.EqualFold(r.Method, "TRACK") {
+		if r.Method != http.MethodGet && r.Method != http.MethodPost {
+			w.Header().Set("Allow", "GET, POST")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}

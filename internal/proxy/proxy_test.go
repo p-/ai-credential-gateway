@@ -160,7 +160,7 @@ func TestNew_BackendError_ReturnsBadGateway(t *testing.T) {
 	}
 }
 
-func TestNew_TraceRejectedWithoutForwardingCredential(t *testing.T) {
+func TestNew_DisallowedMethodsRejectedWithoutForwardingCredential(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("backend received %s request; credential would be echoed", r.Method)
 		w.Write([]byte(r.Header.Get("Authorization")))
@@ -179,13 +179,19 @@ func TestNew_TraceRejectedWithoutForwardingCredential(t *testing.T) {
 		t.Fatalf("New() error: %v", err)
 	}
 
-	for _, method := range []string{http.MethodTrace, "trace", "TRACK"} {
+	for _, method := range []string{
+		http.MethodTrace, "trace", "TRACK", http.MethodPut, http.MethodPatch,
+		http.MethodDelete, http.MethodOptions, http.MethodHead, http.MethodConnect, "get", "post",
+	} {
 		req := httptest.NewRequest(method, "/openai/v1/models", nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusMethodNotAllowed {
 			t.Errorf("%s: status = %d, want %d", method, rec.Code, http.StatusMethodNotAllowed)
+		}
+		if got := rec.Header().Get("Allow"); got != "GET, POST" {
+			t.Errorf("%s: Allow = %q, want %q", method, got, "GET, POST")
 		}
 		if strings.Contains(rec.Body.String(), "sk-secret") {
 			t.Errorf("%s: response leaked credential: %q", method, rec.Body.String())
