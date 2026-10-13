@@ -23,7 +23,11 @@ func Middleware(hub *Hub, proxyKey string) func(http.Handler) http.Handler {
 			var reqBody []byte
 			if r.Body != nil {
 				reqBody, _ = readBounded(r.Body, maxBodyCapture)
-				r.Body = io.NopCloser(bytes.NewReader(reqBody))
+				orig := r.Body
+				r.Body = struct {
+					io.Reader
+					io.Closer
+				}{io.MultiReader(bytes.NewReader(reqBody), orig), orig}
 			}
 
 			// Wrap response writer to capture status and body.
