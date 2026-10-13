@@ -160,6 +160,39 @@ func TestNew_BackendError_ReturnsBadGateway(t *testing.T) {
 	}
 }
 
+func TestNew_TraceRejectedWithoutForwardingCredential(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("backend received %s request; credential would be echoed", r.Method)
+		w.Write([]byte(r.Header.Get("Authorization")))
+	}))
+	defer backend.Close()
+
+	entry := config.ProxyEntry{
+		Key:           "openai",
+		Path:          "openai",
+		HeaderReplace: "Authorization: Bearer {credential}",
+		Endpoint:      backend.URL,
+	}
+
+	handler, err := New(entry, "sk-secret")
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	for _, method := range []string{http.MethodTrace, "trace", "TRACK"} {
+		req := httptest.NewRequest(method, "/openai/v1/models", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("%s: status = %d, want %d", method, rec.Code, http.StatusMethodNotAllowed)
+		}
+		if strings.Contains(rec.Body.String(), "sk-secret") {
+			t.Errorf("%s: response leaked credential: %q", method, rec.Body.String())
+		}
+	}
+}
+
 func TestNew_InvalidEndpoint_ReturnsError(t *testing.T) {
 	entry := config.ProxyEntry{
 		Key:           "bad",

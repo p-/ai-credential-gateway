@@ -49,7 +49,15 @@ func New(entry config.ProxyEntry, credential string) (http.Handler, error) {
 		},
 	}
 
-	return rp, nil
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// TRACE/TRACK make the upstream echo the request headers, which
+		// would include the injected credential.
+		if strings.EqualFold(r.Method, http.MethodTrace) || strings.EqualFold(r.Method, "TRACK") {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		rp.ServeHTTP(w, r)
+	}), nil
 }
 
 // parseHeaderReplace splits "HeaderName: value {credential}" into the header
