@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"log"
+	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -40,6 +41,12 @@ func New(entry config.ProxyEntry, credential string) (http.Handler, error) {
 			// Set the credential header.
 			req.Header.Set(headerName, headerValue)
 		},
+		// Upstream headers are added, not set, so drop the upstream value to
+		// keep the gateway's own Server header.
+		ModifyResponse: func(resp *http.Response) error {
+			resp.Header.Del("Server")
+			return nil
+		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			log.Printf("[%s] proxy error: %v", entry.Key, err)
 			http.Error(w, "bad gateway", http.StatusBadGateway)
@@ -51,6 +58,13 @@ func New(entry config.ProxyEntry, credential string) (http.Handler, error) {
 			w.Header().Set("Allow", "GET, POST")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
+		}
+
+		if r.Method == http.MethodPost {
+			if mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mediaType != "application/json" {
+				http.Error(w, "unsupported media type", http.StatusUnsupportedMediaType)
+				return
+			}
 		}
 
 		// Reject paths that would leave the configured upstream base path

@@ -13,6 +13,12 @@ import (
 	"github.com/p-/ai-credential-gateway/internal/config"
 )
 
+func newJSONRequest(target string, body io.Reader) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, target, body)
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
 func TestNew_ProxiesRequestAndInjectsCredential(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer sk-secret" {
@@ -35,7 +41,7 @@ func TestNew_ProxiesRequestAndInjectsCredential(t *testing.T) {
 		t.Fatalf("New() error: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/openai/v1/models", nil)
+	req := newJSONRequest("/openai/v1/models", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -67,7 +73,7 @@ func TestNew_StripsPathPrefixAndJoinsTargetPath(t *testing.T) {
 		t.Fatalf("New() error: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/chat/completions", nil)
+	req := newJSONRequest("/api/chat/completions", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -96,7 +102,7 @@ func TestNew_SetsHostHeader(t *testing.T) {
 		t.Fatalf("New() error: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/svc/health", nil)
+	req := newJSONRequest("/svc/health", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -151,7 +157,7 @@ func TestNew_BackendError_ReturnsBadGateway(t *testing.T) {
 		t.Fatalf("New() error: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/bad/test", nil)
+	req := newJSONRequest("/bad/test", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -184,6 +190,7 @@ func TestNew_DisallowedMethodsRejectedWithoutForwardingCredential(t *testing.T) 
 		http.MethodDelete, http.MethodOptions, http.MethodHead, http.MethodConnect, "get", "post",
 	} {
 		req := httptest.NewRequest(method, "/openai/v1/models", nil)
+		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
@@ -196,6 +203,125 @@ func TestNew_DisallowedMethodsRejectedWithoutForwardingCredential(t *testing.T) 
 		if strings.Contains(rec.Body.String(), "sk-secret") {
 			t.Errorf("%s: response leaked credential: %q", method, rec.Body.String())
 		}
+	}
+}
+
+func TestNew_NonJSONContentTypeRejected(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("backend reached with Content-Type %q", r.Header.Get("Content-Type"))
+	}))
+	defer backend.Close()
+
+	entry := config.ProxyEntry{
+		Key:           "openai",
+		Path:          "openai",
+		HeaderReplace: "Authorization: Bearer {credential}",
+		Endpoint:      backend.URL,
+	}
+
+	handler, err := New(entry, "sk-secret")
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	for _, ct := range []string{
+		"", "text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x",
+		"application/jsonp", "application/json-seq", "application/json; =bad",
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/openai/chat/completions", strings.NewReader("{}"))
+		if ct != "" {
+			req.Header.Set("Content-Type", ct)
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnsupportedMediaType {
+			t.Errorf("%q: status = %d, want %d", ct, rec.Code, http.StatusUnsupportedMediaType)
+		}
+	}
+}
+
+func TestNew_JSONContentTypeVariantsAccepted(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	entry := config.ProxyEntry{
+		Key:           "openai",
+		Path:          "openai",
+		HeaderReplace: "Authorization: Bearer {credential}",
+		Endpoint:      backend.URL,
+	}
+
+	handler, err := New(entry, "sk-secret")
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	for _, ct := range []string{"application/json", "Application/JSON", "application/json; charset=utf-8"} {
+		req := httptest.NewRequest(http.MethodPost, "/openai/chat/completions", strings.NewReader("{}"))
+		req.Header.Set("Content-Type", ct)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("%q: status = %d, want %d", ct, rec.Code, http.StatusOK)
+		}
+	}
+}
+
+func TestNew_GETWithoutContentTypeAccepted(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	entry := config.ProxyEntry{
+		Key:           "openai",
+		Path:          "openai",
+		HeaderReplace: "Authorization: Bearer {credential}",
+		Endpoint:      backend.URL,
+	}
+
+	handler, err := New(entry, "sk-secret")
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/openai/models", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestNew_StripsUpstreamServerHeader(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", "istio-envoy")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	entry := config.ProxyEntry{
+		Key:           "openai",
+		Path:          "openai",
+		HeaderReplace: "Authorization: Bearer {credential}",
+		Endpoint:      backend.URL,
+	}
+
+	handler, err := New(entry, "sk-secret")
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	rec.Header().Set("Server", "acg")
+	handler.ServeHTTP(rec, newJSONRequest("/openai/chat/completions", nil))
+
+	if got := rec.Header().Values("Server"); len(got) != 1 || got[0] != "acg" {
+		t.Errorf("Server = %q, want [\"acg\"]", got)
 	}
 }
 
@@ -232,7 +358,7 @@ func TestNew_RejectsEncodedTraversalVariants(t *testing.T) {
 
 	for _, target := range targets {
 		reached = false
-		req := httptest.NewRequest(http.MethodGet, target, nil)
+		req := newJSONRequest(target, nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
@@ -263,7 +389,7 @@ func TestNew_RootEntryRejectsTraversal(t *testing.T) {
 		t.Fatalf("New() error: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/%2e%2e/admin", nil)
+	req := newJSONRequest("/%2e%2e/admin", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -292,7 +418,7 @@ func TestNew_DoubleEncodedDotsAreForwardedLiterally(t *testing.T) {
 		t.Fatalf("New() error: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/openai/%252e%252e/admin", nil)
+	req := newJSONRequest("/openai/%252e%252e/admin", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -333,7 +459,7 @@ func TestNew_PreservesLegitimatePaths(t *testing.T) {
 
 	for _, tt := range tests {
 		gotPath = ""
-		req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+		req := newJSONRequest(tt.target, nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
@@ -452,7 +578,7 @@ func TestNew_RootPath_ProxiesRequestAndInjectsCredential(t *testing.T) {
 		t.Fatalf("New() error: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req := newJSONRequest("/v1/models", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -484,7 +610,7 @@ func TestNew_RootPath_PreservesFullPath(t *testing.T) {
 		t.Fatalf("New() error: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/chat/completions", nil)
+	req := newJSONRequest("/chat/completions", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -528,9 +654,9 @@ func TestNew_SSE_StreamedWithoutBuffering(t *testing.T) {
 	proxy := httptest.NewServer(handler)
 	defer proxy.Close()
 
-	resp, err := http.Get(proxy.URL + "/sse/events")
+	resp, err := http.Post(proxy.URL+"/sse/events", "application/json", strings.NewReader("{}"))
 	if err != nil {
-		t.Fatalf("GET error: %v", err)
+		t.Fatalf("POST error: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -582,7 +708,7 @@ func TestNew_RootPath_RootRequest(t *testing.T) {
 		t.Fatalf("New() error: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := newJSONRequest("/", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
